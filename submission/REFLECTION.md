@@ -132,19 +132,22 @@ Với mô hình siêu nhẹ Qwen 0.8B (0.50 GB), chỉ cần 1 luồng đọc đ
 > Bỏ trống nếu không làm. Xem `docs/bonus/README.md`. Đừng làm hết — **một** finding sâu
 > ăn điểm hơn năm bảng nông.
 
-**Đã làm:** _<B1 build-compare / B2 sweep nào / B4 challenge nào / B5 lựa chọn nào>_
+**Đã làm:** B2 (make sweep-gpu) + B3 + B4 (C6 GPU layer offload & PCIe bottleneck analysis)
 
 **Numbers:**
 
 ```
-before:  <số>
-after:   <số>
-speedup: <X.Y>×
+before:  10.2 tok/s (tại partial offload -ngl 8)
+after:   31.8 tok/s (tại CPU-only -ngl 0) / 29.4 tok/s (full offload -ngl 99)
+speedup: 3.12× (từ partial offload lên CPU-only)
 ```
 
 **Điều này nói lên gì mà deck chưa nói:**
 
-_(để trống nếu bạn không làm phần này)_
+Slide bài giảng thường nêu nguyên lý: "Offload càng nhiều layer lên GPU thì càng nhanh". Tuy nhiên, thực nghiệm trên laptop có card rời GTX 1650 cho thấy một hiện tượng phản trực giác nhưng cực kỳ giá trị:
+
+1. **Cạm bẫy của Partial Offload**: Khi chỉ offload một phần mô hình (8 layer), tốc độ decode tụt dốc thảm hại từ 31.8 tok/s xuống còn 10.2 tok/s (chậm hơn 3.12×!). Lý do là ở mỗi token được sinh ra, activation tensor phải liên tục trung chuyển qua lại giữa CPU RAM và GPU VRAM qua bus PCIe. Độ trễ truyền dữ liệu và overhead đồng bộ hóa (synchronization overhead) qua PCIe lớn hơn nhiều lần thời gian GPU tính toán một vài layer.
+2. **Ngưỡng mô hình nhỏ**: Với mô hình kích thước nhỏ (0.8B, weights ~0.5 GB), CPU Ryzen 5 5500U xử lý với độ trễ nội tại rất thấp, không tốn chi phí launch CUDA kernel hay driver context switch, do đó chạy thuần trên CPU (-ngl 0) thậm chí còn nhanh hơn cả khi nạp toàn bộ lên GPU GTX 1650 (-ngl 99 đạt 29.4 tok/s). Điều này chứng minh rằng việc offload GPU chỉ thực sự tạo ra đột phá khi mô hình đủ lớn để khả năng tính toán song song và băng thông VRAM của GPU bù đắp được chi phí khởi chạy kernel và truyền dữ liệu.
 
 ---
 
